@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新闻显示测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #0b1020;
+            color: #e5e7eb;
+        }
+        .news-item {
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .news-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #f1f5f9;
+        }
+        .news-meta {
+            color: #9aa4b2;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+        .news-summary {
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        .btn.active {
+            background: #7c3aed;
+        }
+    </style>
+</head>
+<body>
+    <h1>新闻显示测试</h1>
+    
+    <div class="controls">
+        <button class="btn active" onclick="loadNews('all', 'composite')">全部</button>
+        <button class="btn" onclick="loadNews('科技', 'composite')">科技</button>
+        <button class="btn" onclick="loadNews('娱乐', 'composite')">娱乐</button>
+        <button class="btn" onclick="loadNews('生活', 'composite')">生活</button>
+        <button class="btn" onclick="loadNews('general', 'composite')">综合</button>
+    </div>
+    
+    <div class="controls">
+        <button class="btn" onclick="loadNews('all', 'latest')">最新</button>
+        <button class="btn" onclick="loadNews('all', 'hot')">热门</button>
+    </div>
+    
+    <div id="news-container">
+        <p>点击按钮加载新闻...</p>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:5175';
+        
+        async function loadNews(category, sort) {
+            // 更新按钮状态
+            document.querySelectorAll('.btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            try {
+                const url = new URL(`${BASE_URL}/api/news`);
+                if (category) url.searchParams.set('category', category);
+                if (sort) url.searchParams.set('sort', sort);
+                
+                console.log('请求URL:', url.toString());
+                
+                const response = await fetch(url.toString());
+                const data = await response.json();
+                
+                console.log('API响应:', data);
+                
+                if (data.ok && data.items) {
+                    displayNews(data.items);
+                } else {
+                    document.getElementById('news-container').innerHTML = '<p>加载失败</p>';
+                }
+            } catch (error) {
+                console.error('请求失败:', error);
+                document.getElementById('news-container').innerHTML = '<p>请求失败: ' + error.message + '</p>';
+            }
+        }
+        
+        function displayNews(items) {
+            const container = document.getElementById('news-container');
+            
+            if (items.length === 0) {
+                container.innerHTML = '<p>没有找到新闻</p>';
+                return;
+            }
+            
+            container.innerHTML = items.map(item => `
+                <div class="news-item">
+                    <div class="news-title">${item.title}</div>
+                    <div class="news-meta">
+                        分类: ${item.category} | 
+                        热度: ${item.hot} | 
+                        时间: ${new Date(item.time * 1000).toLocaleString()}
+                    </div>
+                    <div class="news-summary">${item.summary || '无摘要'}</div>
+                </div>
+            `).join('');
+        }
+        
+        // 页面加载时自动加载全部新闻
+        window.onload = () => loadNews('all', 'composite');
+    </script>
+</body>
+</html>

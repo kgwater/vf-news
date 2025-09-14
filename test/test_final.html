@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VF News 功能测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #0b1020;
+            color: #e5e7eb;
+        }
+        .test-section {
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-title {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 16px;
+            color: #f1f5f9;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .btn.active {
+            background: #7c3aed;
+        }
+        .result {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .news-item {
+            background: rgba(15, 23, 42, 0.3);
+            border: 1px solid rgba(148,163,184,.1);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+        }
+        .news-title {
+            font-weight: bold;
+            color: #f1f5f9;
+        }
+        .news-meta {
+            color: #9aa4b2;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>VF News 功能测试</h1>
+    
+    <div class="test-section">
+        <div class="test-title">1. 分类筛选测试</div>
+        <button class="btn active" onclick="testCategory('all')">全部</button>
+        <button class="btn" onclick="testCategory('科技')">科技</button>
+        <button class="btn" onclick="testCategory('娱乐')">娱乐</button>
+        <button class="btn" onclick="testCategory('生活')">生活</button>
+        <button class="btn" onclick="testCategory('体育')">体育</button>
+        <button class="btn" onclick="testCategory('财经')">财经</button>
+        <button class="btn" onclick="testCategory('general')">综合</button>
+        <div class="result" id="category-result">点击按钮测试分类筛选...</div>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">2. 排序功能测试</div>
+        <button class="btn" onclick="testSort('composite')">综合</button>
+        <button class="btn" onclick="testSort('latest')">最新</button>
+        <button class="btn" onclick="testSort('hot')">热门</button>
+        <div class="result" id="sort-result">点击按钮测试排序功能...</div>
+    </div>
+    
+    <div class="test-section">
+        <div class="test-title">3. 新闻列表显示</div>
+        <button class="btn" onclick="loadAllNews()">加载所有新闻</button>
+        <div class="result" id="news-result">点击按钮加载新闻...</div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:5175';
+        
+        async function testCategory(category) {
+            // 更新按钮状态
+            document.querySelectorAll('.test-section:nth-child(2) .btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            try {
+                const url = new URL(`${BASE_URL}/api/news`);
+                url.searchParams.set('category', category);
+                url.searchParams.set('sort', 'composite');
+                
+                const response = await fetch(url.toString());
+                const data = await response.json();
+                
+                if (data.ok && data.items) {
+                    document.getElementById('category-result').innerHTML = 
+                        `分类 "${category}" 找到 ${data.items.length} 条新闻<br>` +
+                        data.items.map(item => `- ${item.title} (${item.category})`).join('<br>');
+                } else {
+                    document.getElementById('category-result').innerHTML = '加载失败';
+                }
+            } catch (error) {
+                document.getElementById('category-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        async function testSort(sort) {
+            try {
+                const url = new URL(`${BASE_URL}/api/news`);
+                url.searchParams.set('category', 'all');
+                url.searchParams.set('sort', sort);
+                
+                const response = await fetch(url.toString());
+                const data = await response.json();
+                
+                if (data.ok && data.items) {
+                    const sortedItems = data.items.slice(0, 5); // 只显示前5条
+                    document.getElementById('sort-result').innerHTML = 
+                        `排序 "${sort}" 前5条新闻:<br>` +
+                        sortedItems.map((item, index) => 
+                            `${index + 1}. ${item.title} (热度: ${item.hot}, 时间: ${new Date(item.time * 1000).toLocaleString()})`
+                        ).join('<br>');
+                } else {
+                    document.getElementById('sort-result').innerHTML = '加载失败';
+                }
+            } catch (error) {
+                document.getElementById('sort-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        async function loadAllNews() {
+            try {
+                const url = new URL(`${BASE_URL}/api/news`);
+                url.searchParams.set('category', 'all');
+                url.searchParams.set('sort', 'composite');
+                
+                const response = await fetch(url.toString());
+                const data = await response.json();
+                
+                if (data.ok && data.items) {
+                    document.getElementById('news-result').innerHTML = 
+                        `总共加载 ${data.items.length} 条新闻:<br><br>` +
+                        data.items.map(item => `
+                            <div class="news-item">
+                                <div class="news-title">${item.title}</div>
+                                <div class="news-meta">
+                                    分类: ${item.category} | 热度: ${item.hot} | 
+                                    时间: ${new Date(item.time * 1000).toLocaleString()}
+                                </div>
+                            </div>
+                        `).join('');
+                } else {
+                    document.getElementById('news-result').innerHTML = '加载失败';
+                }
+            } catch (error) {
+                document.getElementById('news-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        // 页面加载时自动测试
+        window.onload = () => {
+            testCategory('all');
+            testSort('composite');
+            loadAllNews();
+        };
+    </script>
+</body>
+</html>

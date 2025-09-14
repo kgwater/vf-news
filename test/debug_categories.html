@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分类调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #0b1020;
+            color: #e5e7eb;
+        }
+        .debug-section {
+            background: #0f172a;
+            border: 1px solid rgba(148,163,184,.2);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            background: #2563eb;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .btn.active {
+            background: #7c3aed;
+        }
+        .result {
+            margin-top: 16px;
+            padding: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>分类调试页面</h1>
+    
+    <div class="debug-section">
+        <h3>1. 测试标签API</h3>
+        <button class="btn" onclick="testTagsAPI()">获取标签</button>
+        <div class="result" id="tags-result">点击按钮测试...</div>
+    </div>
+    
+    <div class="debug-section">
+        <h3>2. 测试新闻API</h3>
+        <button class="btn" onclick="testNewsAPI()">获取新闻</button>
+        <div class="result" id="news-result">点击按钮测试...</div>
+    </div>
+    
+    <div class="debug-section">
+        <h3>3. 分类筛选测试</h3>
+        <div id="category-buttons"></div>
+        <div class="result" id="category-result">选择分类测试...</div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:5175';
+        let categories = [];
+        let news = [];
+        
+        async function testTagsAPI() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/tags`);
+                const data = await response.json();
+                
+                document.getElementById('tags-result').innerHTML = 
+                    `API响应: ${JSON.stringify(data, null, 2)}`;
+                
+                if (data.ok && data.tags) {
+                    categories = data.tags;
+                    renderCategoryButtons();
+                }
+            } catch (error) {
+                document.getElementById('tags-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        async function testNewsAPI() {
+            try {
+                const response = await fetch(`${BASE_URL}/api/news?category=all&sort=composite`);
+                const data = await response.json();
+                
+                document.getElementById('news-result').innerHTML = 
+                    `API响应: ${JSON.stringify(data, null, 2)}`;
+                
+                if (data.ok && data.items) {
+                    news = data.items;
+                }
+            } catch (error) {
+                document.getElementById('news-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        function renderCategoryButtons() {
+            const container = document.getElementById('category-buttons');
+            const allCategories = [
+                { key: 'all', name: '全部' },
+                ...categories.map(tag => ({
+                    key: tag,
+                    name: tag === 'general' ? '综合' : tag
+                }))
+            ];
+            
+            container.innerHTML = allCategories.map(cat => 
+                `<button class="btn" onclick="testCategory('${cat.key}')">${cat.name}</button>`
+            ).join('');
+        }
+        
+        async function testCategory(category) {
+            try {
+                const response = await fetch(`${BASE_URL}/api/news?category=${category}&sort=composite`);
+                const data = await response.json();
+                
+                if (data.ok && data.items) {
+                    document.getElementById('category-result').innerHTML = 
+                        `分类 "${category}" 找到 ${data.items.length} 条新闻<br>` +
+                        data.items.map(item => `- ${item.title} (${item.category})`).join('<br>');
+                } else {
+                    document.getElementById('category-result').innerHTML = '加载失败';
+                }
+            } catch (error) {
+                document.getElementById('category-result').innerHTML = '请求失败: ' + error.message;
+            }
+        }
+        
+        // 页面加载时自动测试
+        window.onload = () => {
+            testTagsAPI();
+            testNewsAPI();
+        };
+    </script>
+</body>
+</html>
