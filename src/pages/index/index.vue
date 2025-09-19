@@ -2,9 +2,9 @@
   <view class="page">
     <!-- 顶部栏 -->
     <view class="topbar">
-      <text class="brand">VF News</text>
+      <text class="brand">VF News（Demo）-{{ currentSort }}</text>
       <view class="search">
-        <text class="search-icon">🔍</text>
+        <text class="search-icon">🔍</text> 
         <input class="search-input" v-model="q" placeholder="搜索热点 / 话题 / 媒体" confirm-type="search" @input="onSearchInput" @confirm="onSearch" />
       </view>
       <view class="action" title="通知">🔔</view>
@@ -12,7 +12,10 @@
 
     <!-- 分类（与排序独立） -->
     <scroll-view class="tabs" scroll-x>
-      <view v-for="c in categories" :key="c.key" :class="['tab', currentCategory===c.key?'active':'']" @tap="switchCategory(c.key)">{{c.name}}</view>
+      <view v-for="c in categories" :key="c.key" :class="['tab', currentCategory===c.key?'active':'']" @tap="switchCategory(c.key)">
+        {{c.name}}
+        <!-- <text v-if="typeof c.count==='number'">({{c.count}})</text> -->
+      </view>
     </scroll-view>
 
     <!-- 列表 -->
@@ -27,19 +30,31 @@
         </view>
       </view>
       <view v-for="item in filteredList" :key="item.id" class="card" @tap="openDetail(item)">
-        <view class="media" :style="{background: item.image ? `url(${item.image})` : gradient(item), backgroundSize: 'cover', backgroundPosition: 'center'}">
+        <view class="media">
+          <image v-if="item.image" :src="item.image" mode="aspectFill" lazy-load class="media-img"></image>
+          <view v-else :style="{height:'100%',background: gradient(item)}"></view>
           <view v-if="item.imageAlt" class="media-overlay">{{item.imageAlt}}</view>
         </view>
         <view class="content">
           <text class="title">{{item.title}}</text>
           <text v-if="item.summary" class="summary">{{item.summary}}</text>
           <view class="meta">
-            <text class="tag">{{categoryName(item.category)}}</text>
-            <text class="muted">· 热度 {{item.hot||0}}</text>
+            <text class="tag">{{primaryTagName(item)}}</text>
+            <text class="muted">· 热度 {{(item.hot||0)}}</text>
             <text v-if="item.author" class="muted">· {{item.author}}</text>
           </view>
           <view v-if="item.tags && item.tags.length > 0" class="tags">
             <text v-for="tag in item.tags.slice(0, 3)" :key="tag" class="tag-small">#{{tag}}</text>
+          </view>
+          <view class="actions">
+            <view class="action-btn" @tap.stop="likeItem(item)">
+              <text class="action-icon">👍</text>
+              <text class="action-text">{{item.likes||0}}</text>
+            </view>
+            <view class="action-btn" @tap.stop="commentItem(item)">
+              <text class="action-icon">💬</text>
+              <text class="action-text">{{item.commentsCount||0}}</text>
+            </view>
           </view>
         </view>
       </view>
@@ -51,7 +66,8 @@
     <!-- 底部排序导航 -->
     <view class="bottom">
       <view class="nav">
-        <view :class="['nav-btn', currentSort==='home'?'active':'']" @tap="switchSort('home')">
+
+        <view :class="['nav-btn', currentSort=='home'?'active':'']" @tap="switchSort('home')">
           <text class="nav-icon">🏠</text>
           <text>综合</text>
         </view>
@@ -63,6 +79,10 @@
           <text class="nav-icon">🔥</text>
           <text>热门</text>
         </view>
+        
+  
+
+
         <view class="nav-btn" @tap="openAbout">
           <text class="nav-icon">📖</text>
           <text>关于</text>
@@ -89,18 +109,20 @@ export default {
     return {
       baseURL: 'http://localhost:5175',
       categories: [
-        { key: 'all', name: '全部' },
-        { key: '科技', name: '科技' },
-        { key: '娱乐', name: '娱乐' },
-        { key: '生活', name: '生活' },
-        { key: '体育', name: '体育' },
-        { key: '财经', name: '财经' }
-      ], // 设置默认分类，确保至少有几个分类显示
+        { key: 'all', name: '全部', count: 0 },
+        {key: '全息技术',name: '全息技术', count: 2},
+        {key: '全息技术',name: '虚拟城市', count: 2},
+        {key: '全息技术',name: '城市管理', count: 1},
+        {key: '全息技术',name: '地标', count: 1}
+      ], // 由后端聚合返回 tags 动态填充
       currentCategory: 'all',
       currentSort: 'home',
       list: [],
       loading: false,
       loadingMore: false,
+      page: 1,
+      pageSize: 10,
+      total: 0,
       q: '',
       showDetail: false,
       detail: {},
@@ -117,14 +139,16 @@ export default {
   },
   onLoad() {
     this.calcFeedHeight()
-    this.fetchTags()
+    // 先拉新闻保证有数据可用于降级聚合标签，再拉后端 tags 覆盖
     this.fetchNews()
+    this.fetchTags()
   },
   onPullDownRefresh() {
     this.fetchNews()
     setTimeout(()=>{ uni.stopPullDownRefresh() }, 300)
   },
   methods: {
+    
     calcFeedHeight() {
       // 简化：以窗口高度换算，留出顶部与底部空间
       try {
@@ -133,9 +157,10 @@ export default {
         this.feedHeight = Math.floor(vh / 750 * 750) - 300
       } catch(e) {}
     },
-    categoryName(key){
-      const f = this.categories.find(c=>c.key===key)
-      return f?f.name:'综合'
+    primaryTagName(item){
+      const first = (item.tags && item.tags[0]) || '综合'
+      const tagMap = { technology:'科技', entertainment:'娱乐', life:'生活', sports:'体育', finance:'财经', anime:'动漫', manga:'漫画', novel:'小说', local:'本地', general:'综合' }
+      return tagMap[first] || first
     },
     // fetchTags(){
     //   uni.request({
@@ -176,34 +201,18 @@ export default {
         url: `${this.baseURL}/api/tags`,
         method: 'GET',
         success: (res)=>{
-          if (res.data && res.data.ok && res.data.tags && res.data.tags.length > 0) {
-            const tags = res.data.tags;
+          if (res.data && res.data.ok && Array.isArray(res.data.tags)) {
+            const tags = res.data.tags; // 可能是 []
             console.log('获取到的标签:', tags);
-            // 处理标签数据，确保格式正确
-            const newCategories = tags.map(tag => {
-              // 映射英文标签到中文名称
-              const tagMap = {
-                'technology': '科技',
-                'entertainment': '娱乐',
-                'life': '生活',
-                'sports': '体育',
-                'finance': '财经',
-                'anime': '动漫',
-                'manga': '漫画',
-                'novel': '小说',
-                'local': '本地'
-              }
-              return {
-                key: tag,
-                name: tagMap[tag] || tag // 如果没有映射则使用原标签
-              }
-            });
-            // 添加"全部"选项在最前面
-            this.categories = [
-              { key: 'all', name: '全部' },
-              ...newCategories
-            ];
-            console.log('更新后的分类:', this.categories);
+            if (tags.length > 0 && typeof tags[0] === 'object' && ('tag' in tags[0])) {
+              const tagMap = { technology:'科技', entertainment:'娱乐', life:'生活', sports:'体育', finance:'财经', anime:'动漫', manga:'漫画', novel:'小说', local:'本地', general:'综合' }
+              const newCategories = tags.map(t => ({ key: t.tag, name: tagMap[t.tag] || t.tag, count: t.count }))
+              this.categories = [{ key:'all', name:'全部', count: newCategories.reduce((s,c)=>s+c.count,0) } , ...newCategories]
+            } else if (tags.length > 0 && typeof tags[0] === 'string') { // 若后端仅返回字符串数组
+              const tagMap = { technology:'科技', entertainment:'娱乐', life:'生活', sports:'体育', finance:'财经', anime:'动漫', manga:'漫画', novel:'小说', local:'本地', general:'综合' }
+              const newCategories = tags.map(tag => ({ key: tag, name: tagMap[tag] || tag }))
+              this.categories = [{ key:'all', name:'全部' }, ...newCategories]
+            }
           } else {
             console.log('标签数据为空，使用默认分类');
             // 保持默认分类
@@ -215,10 +224,24 @@ export default {
         }
       })
     },
+    // 当 /api/tags 为空时，基于一次性拉取的新闻生成标签（降级方案）
+    ensureTagsFromNews(items){
+      if (this.categories.length>1) return
+      const counts = new Map()
+      ;(items||[]).forEach(it=>{
+        (it.tags||[]).forEach(t=>counts.set(t,(counts.get(t)||0)+1))
+      })
+      const tagMap = { technology:'科技', entertainment:'娱乐', life:'生活', sports:'体育', finance:'财经', anime:'动漫', manga:'漫画', novel:'小说', local:'本地', general:'综合' }
+      const arr = Array.from(counts.entries()).map(([tag,count])=>({ key:tag, name:tagMap[tag]||tag, count }))
+      arr.sort((a,b)=> b.count-a.count || String(a.key).localeCompare(String(b.key)))
+      const total = arr.reduce((s,c)=>s+c.count,0)
+      this.categories = [{ key:'all', name:'全部', count: total }, ...arr]
+    },
 
     gradient(item){
-      const map = { anime: 'linear-gradient(90deg,#4f46e5,#7c3aed)', manga: 'linear-gradient(90deg,#06b6d4,#8b5cf6)', novel: 'linear-gradient(90deg,#10b981,#06b6d4)', local: 'linear-gradient(90deg,#f59e0b,#ef4444)' }
-      return map[item.category] || 'linear-gradient(90deg,#1e293b,#0f172a)'
+      const first = (item.tags && item.tags[0]) || 'general'
+      const map = { anime: 'linear-gradient(90deg,#4f46e5,#7c3aed)', manga: 'linear-gradient(90deg,#06b6d4,#8b5cf6)', novel: 'linear-gradient(90deg,#10b981,#06b6d4)', local: 'linear-gradient(90deg,#f59e0b,#ef4444)', technology:'linear-gradient(90deg,#2563eb,#7c3aed)', entertainment:'linear-gradient(90deg,#ec4899,#f59e0b)', life:'linear-gradient(90deg,#10b981,#22d3ee)', sports:'linear-gradient(90deg,#f43f5e,#fb7185)', finance:'linear-gradient(90deg,#22c55e,#16a34a)' }
+      return map[first] || 'linear-gradient(90deg,#1e293b,#0f172a)'
     },
     // fetchNews(append=false){
     //   this.loading = true
@@ -246,31 +269,31 @@ export default {
     // },
     // 2025-9-14
     fetchNews(append=false){
-      this.loading = true
-      const category = this.currentCategory
-      // 确保排序参数正确映射
-      const sortMap = {
-        'home': 'composite',
-        'latest': 'latest',
-        'hot': 'hot'
-      }
+      if (!append) { this.page = 1; this.total = 0 }
+      this.loading = !append
+      this.loadingMore = append
+      const tag = this.currentCategory !== 'all' ? this.currentCategory : ''
+      const sortMap = { 'home':'composite', 'latest':'latest', 'hot':'hot' }
       const sort = sortMap[this.currentSort] || 'composite'
-      console.log(`请求新闻: category=${category}, sort=${sort}`)
+      const page = this.page
+      const pageSize = this.pageSize
       uni.request({
         url: `${this.baseURL}/api/news`,
         method: 'GET',
-        data: { category, sort },
+        data: { tag, sort, page, pageSize },
         success: (res)=>{
           const items = (res.data && res.data.items) || []
-          console.log(`收到新闻数量: ${items.length}`)
+          this.total = (res.data && res.data.total) || 0
           this.list = append ? this.list.concat(items) : items
+          this.page = append ? (this.page + 1) : 2
+          if (!append && this.categories.length===1) this.ensureTagsFromNews(items)
         },
         fail: ()=>{
-          console.log('请求新闻失败')
-          this.list = []
+          if (!append) this.list = []
         },
         complete: ()=>{
           this.loading = false
+          this.loadingMore = false
         }
       })
     },
@@ -278,10 +301,8 @@ export default {
 
     onReachBottom(){
       if (this.loadingMore) return
-      this.loadingMore = true
-      // 简易：重复请求并拼接，模拟分页
+      if (this.list.length >= this.total && this.total > 0) return
       this.fetchNews(true)
-      setTimeout(()=>{ this.loadingMore = false }, 400)
     },
     // switchCategory(key){
     //   this.currentCategory = key
@@ -290,8 +311,9 @@ export default {
     // 2025-9-14
     switchCategory(key){
       this.currentCategory = key
-      this.list = []; // 清空当前列表
-      this.fetchNews(); // 重新获取对应分类的数据
+      this.list = []
+      console.log('switchCategory', key)
+      this.fetchNews()
     },
 
 
@@ -303,12 +325,10 @@ export default {
     // },
     //2025-9-14
     switchSort(key){
+      if (key !== 'home' && key !== 'latest' && key !== 'hot') return
       this.currentSort = key
-      // 确保无论什么情况都触发数据刷新
-      if (key !== 'about') {
-        this.list = []; // 清空当前列表
-        this.fetchNews(); // 重新获取数据
-      }
+      this.list = []
+      this.fetchNews()
     },
     onSearch(){
       // 简易前端过滤：不请求后端
@@ -319,6 +339,8 @@ export default {
       this.detail = item
       this.detailHtml = this.markdownToNodes(item.content || '')
       this.showDetail = true
+      // 浏览计数
+      this.viewItem(item)
     },
     closeDetail(){
       this.showDetail = false
@@ -348,6 +370,43 @@ export default {
       } catch(e){
         return md
       }
+    }
+    ,viewItem(item){
+      if (!item || !item.id) return
+      uni.request({
+        url: `${this.baseURL}/api/news/${item.id}/view`,
+        method: 'POST',
+        data: {},
+        success: (res)=>{
+          item.views = (res.data && res.data.views) || ((item.views||0)+1)
+          // 可能影响 hot 的重新显示，简单本地更新
+          item.hot = (item.views||0) + (item.likes||0)*3 + (item.commentsCount||0)*4
+        }
+      })
+    }
+    ,likeItem(item){
+      if (!item || !item.id) return
+      uni.request({
+        url: `${this.baseURL}/api/news/${item.id}/like`,
+        method: 'POST',
+        data: { op: 'inc' },
+        success: (res)=>{
+          item.likes = (res.data && res.data.likes) || ((item.likes||0)+1)
+          item.hot = (item.views||0) + (item.likes||0)*3 + (item.commentsCount||0)*4
+        }
+      })
+    }
+    ,commentItem(item){
+      if (!item || !item.id) return
+      uni.request({
+        url: `${this.baseURL}/api/news/${item.id}/comment`,
+        method: 'POST',
+        data: {},
+        success: (res)=>{
+          item.commentsCount = (res.data && res.data.commentsCount) || ((item.commentsCount||0)+1)
+          item.hot = (item.views||0) + (item.likes||0)*3 + (item.commentsCount||0)*4
+        }
+      })
     }
   }
 }
@@ -432,7 +491,6 @@ export default {
   border:1rpx solid rgba(148,163,184,.16);
   cursor: pointer;
   transition: all .25s ease;
-
 }
 .tab.active { 
   color:#fff; 
@@ -467,6 +525,11 @@ export default {
   height: 300rpx; 
   background: linear-gradient(120deg, #1e293b, #0b1020);
   position: relative;
+}
+.media-img {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .media::after { 
   content: ""; 
@@ -543,6 +606,28 @@ export default {
 .muted { 
   color:#9aa4b2; 
 }
+.actions {
+  display: flex;
+  gap: 24rpx;
+  margin-top: 12rpx;
+}
+.nav-btn { 
+  border: 0; 
+  outline: 0; 
+  cursor: pointer;
+  opacity: 0.8;
+  color: #4e709f; 
+  border-radius: 24rpx; 
+  padding: 16rpx 12rpx; 
+  display: flex; 
+  flex-direction: column;
+  align-items: center; 
+  gap: 12rpx; 
+  transition: all .2s ease; 
+  font-size: 24rpx;
+}
+.action-icon { font-size: 26rpx; }
+.action-text { font-size: 22rpx; }
 .empty, .loading { 
   text-align: center; 
   color:#9aa4b2; 
@@ -584,10 +669,11 @@ export default {
   font-size: 24rpx;
 }
 .nav-btn.active { 
-  color: white; 
-  background: linear-gradient(180deg, rgba(37,99,235,.16), rgba(37,99,235,.08)); 
-  box-shadow: inset 0 0 0 1rpx rgba(59,130,246,.35); 
+  color: #fff !important;
+  background: linear-gradient(180deg, rgba(37,99,235,.16), rgba(37,99,235,.08));
+  box-shadow: inset 0 0 0 1rpx rgba(59,130,246,.35);
 }
+.nav-btn.active text { color: #fff !important; }
 .nav-btn:hover { 
   transform: translateY(-2rpx); 
 }

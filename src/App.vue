@@ -1,3 +1,7 @@
+<template>
+  <view id="app"></view>
+</template>
+
 <script>
 export default {
   onLaunch: function () {

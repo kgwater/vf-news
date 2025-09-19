@@ -3,7 +3,6 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
-const { generateVirtualNews, testApiKey } = require('./services/ai');
 
 const app = express();
 const PORT = process.env.PORT || 5175;
@@ -14,7 +13,8 @@ const WORLD_FILE = path.join(DATA_DIR, 'worldsetting.json');
 const DRAFT_FILE = path.join(DATA_DIR, 'drafts.json');
 const NEWSLOG_DIR = path.join(__dirname, 'newslog');
 
-const DISCLAIMER = '内容为AI生成的虚拟新闻，不涉及现实中的一切内容，无任何映射';
+// 已移除 AI 相关逻辑与免责声明
+// 新闻仍为AI生成，但由人工维护 
 
 app.use(bodyParser.json({ limit: '1mb' }));
 app.use((req, res, next) => {
@@ -48,20 +48,9 @@ function writeJson(file, data) {
 }
 
 // rudimentary content policy check
-function violatesPolicy(text) {
-  if (!text) return true;
-  const forbiddenPatterns = [
-    /中国|美国|日本|北京|上海|纽约|东京|伦敦|巴黎|俄罗斯|德国/g, // 现实地名国家（示例）
-    /习近平|拜登|泽连斯基|普京|特朗普|马斯克/g, // 现实人物（示例）
-    /恐怖|爆炸|炸弹|血腥|色情|强奸|极端主义|ISIS|基地组织/g
-  ];
-  return forbiddenPatterns.some(re => re.test(text));
-}
-
-function attachDisclaimer(text) {
-  if (!text) return DISCLAIMER;
-  return text.includes(DISCLAIMER) ? text : `${text}\n\n${DISCLAIMER}`;
-}
+// 移除内容合规与免责声明拼接
+function violatesPolicy() { return false; }
+function attachDisclaimer(text) { return text || ''; }
 
 ensureDataFiles();
 
@@ -82,124 +71,9 @@ app.put('/api/worldsetting', (req, res) => {
   res.json({ ok: true });
 });
 
-// Generate draft via AI
-app.post('/api/generate', async (req, res) => {
-  try {
-    const { apiKey, category = 'general', titleHint, tone, model, length, temperature, baseUrl, customWorld } = req.body || {};
-    if (!apiKey) return res.status(400).json({ ok: false, message: '缺少 apiKey' });
-    // 将默认设定与用户设定合并（用户设定不落盘，仅参与本次生成）
-    const baseWorld = readJson(WORLD_FILE) || {};
-    let world = baseWorld;
-    if (customWorld && typeof customWorld === 'object') {
-      world = { ...baseWorld, ...customWorld };
-    }
-    const result = await generateVirtualNews({ apiKey, world, model, baseUrl, category, titleHint, tone, length, temperature });
-    // policy check before creating draft
-    const bodyToCheck = `${result.title}\n${result.content}`;
-    if (violatesPolicy(bodyToCheck)) {
-      return res.status(400).json({ ok: false, message: 'AI 生成内容不合规，请调整设定后重试' });
-    }
-    const db = readJson(DRAFT_FILE) || { items: [] };
-    const item = {
-      id: `d_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-      title: result.title,
-      content: result.content,
-      category,
-      createdAt: Date.now()
-    };
-    db.items.unshift(item);
-    writeJson(DRAFT_FILE, db);
-    res.json({ ok: true, draft: item });
-  } catch (e) {
-    res.status(500).json({ ok: false, message: String(e.message || e) });
-  }
-});
+// 已移除 AI 生成与测试接口
 
-// Test API key
-app.post('/api/test-api', async (req, res) => {
-  try {
-    const { apiKey, baseUrl } = req.body || {};
-    const r = await testApiKey({ apiKey, baseUrl });
-    res.json(r);
-  } catch (e) {
-    res.status(500).json({ ok: false, message: String(e.message || e) });
-  }
-});
-
-// Drafts CRUD
-app.get('/api/drafts', (req, res) => {
-  const db = readJson(DRAFT_FILE) || { items: [] };
-  res.json({ ok: true, items: db.items });
-});
-
-app.get('/api/drafts/:id', (req, res) => {
-  const db = readJson(DRAFT_FILE) || { items: [] };
-  const item = (db.items || []).find(d => d.id === req.params.id);
-  if (!item) return res.status(404).json({ ok: false, message: 'not found' });
-  res.json({ ok: true, item });
-});
-
-app.put('/api/drafts/:id', (req, res) => {
-  const { title, content, category } = req.body || {};
-  const db = readJson(DRAFT_FILE) || { items: [] };
-  const idx = (db.items || []).findIndex(d => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ ok: false, message: 'not found' });
-  const next = { ...db.items[idx] };
-  if (typeof title === 'string') next.title = title;
-  if (typeof category === 'string') next.category = category;
-  if (typeof content === 'string') {
-    if (violatesPolicy(`${next.title}\n${content}`)) {
-      return res.status(400).json({ ok: false, message: '内容不合规：包含现实要素或不允许的主题' });
-    }
-    next.content = content;
-  }
-  db.items[idx] = next;
-  writeJson(DRAFT_FILE, db);
-  res.json({ ok: true, item: next });
-});
-
-app.delete('/api/drafts/:id', (req, res) => {
-  const db = readJson(DRAFT_FILE) || { items: [] };
-  const before = db.items.length;
-  db.items = db.items.filter(d => d.id !== req.params.id);
-  writeJson(DRAFT_FILE, db);
-  res.json({ ok: true, removed: before - db.items.length });
-});
-
-// Publish draft -> news
-app.post('/api/drafts/:id/publish', (req, res) => {
-  const { hot = 0 } = req.body || {};
-  const drafts = readJson(DRAFT_FILE) || { items: [] };
-  const idx = (drafts.items || []).findIndex(d => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ ok: false, message: 'draft not found' });
-  const draft = drafts.items[idx];
-  if (violatesPolicy(`${draft.title}\n${draft.content}`)) {
-    return res.status(400).json({ ok: false, message: '内容不合规：包含现实要素或不允许的主题' });
-  }
-  const newsDb = readJson(NEWS_FILE) || { items: [] };
-  const item = {
-    id: `n_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-    title: draft.title,
-    content: attachDisclaimer(draft.content),
-    category: draft.category || 'general',
-    time: Math.floor(Date.now()/60000) % (24*60),
-    hot: Number(hot) || 0
-  };
-  newsDb.items.unshift(item);
-  writeJson(NEWS_FILE, newsDb);
-  // 同步保存为 Markdown 到 newslog
-  try {
-    if (!fs.existsSync(NEWSLOG_DIR)) fs.mkdirSync(NEWSLOG_DIR, { recursive: true });
-    const safeTitle = String(item.title || 'news').replace(/[\\/:*?"<>|\s]+/g, '-').slice(0, 60);
-    const ts = new Date().toISOString().replace(/[:.]/g, '-');
-    const md = `# ${item.title}\n\n${item.content}\n`;
-    fs.writeFileSync(path.join(NEWSLOG_DIR, `${ts}_${safeTitle}.md`), md);
-  } catch (e) { /* 忽略写入失败，不影响主流程 */ }
-  // remove draft
-  drafts.items.splice(idx, 1);
-  writeJson(DRAFT_FILE, drafts);
-  res.json({ ok: true, item });
-});
+// 已移除草稿相关接口，改为纯手动维护新闻
 
 // 从newslog文件夹读取JSON文件的函数
 function readNewsFromJson() {
@@ -245,7 +119,7 @@ function readNewsFromJson() {
   return items;
 }
 
-// 解析JSON文件为新闻对象
+// 解析JSON文件为新闻对象（从 newslog 根目录读取，文件内自带 tags/统计字段）
 function parseJsonToNews(content, filename, mtime, category) {
   try {
     const data = JSON.parse(content);
@@ -257,28 +131,24 @@ function parseJsonToNews(content, filename, mtime, category) {
     }
     
     // 检查内容合规性
-    if (violatesPolicy(`${data.title}\n${data.content}`)) {
-      console.warn('JSON文件内容不合规:', filename);
-      return null;
-    }
+    // 已移除内容合规校验
     
     // 构建新闻对象
     const newsItem = {
       id: data.id || `json_${mtime.getTime()}_${Math.random().toString(36).slice(2,8)}`,
       title: data.title,
       content: data.content,
-      category: data.category || category,
-      time: data.publishTime ? Math.floor(new Date(data.publishTime).getTime() / 1000) : Math.floor(mtime.getTime() / 1000),
-      hot: data.hot || Math.floor(Math.random() * 150 + 10),
+      tags: Array.isArray(data.tags) ? data.tags : (data.category ? [data.category] : []),
+      createdAt: data.publishTime ? new Date(data.publishTime).getTime() : mtime.getTime(),
+      views: Number(data.views || 0),
+      likes: Number(data.likes || 0),
+      commentsCount: Number(data.commentsCount || 0),
       source: 'json',
       filename,
-      // 新增字段
       summary: data.summary || '',
       image: data.image || '',
       imageAlt: data.imageAlt || '',
-      author: data.author || 'VF News',
-      tags: data.tags || [],
-      disclaimer: data.disclaimer || '内容为AI生成的虚拟新闻，不涉及现实中的一切内容，无任何映射'
+      author: data.author || 'VF News'
     };
     
     return newsItem;
@@ -321,105 +191,102 @@ function parseMarkdownToNews(content, filename, mtime, category) {
   }
 }
 
-// 获取所有可用的tag列表
-function getAvailableTags() {
-  const tags = ['general']; // 默认包含general（无分区）
-  
-  try {
-    if (!fs.existsSync(NEWSLOG_DIR)) {
-      return tags;
+// 基于新闻数据聚合得到 tags 及数量
+function aggregateTags(items) {
+  const tagToCount = new Map();
+  for (const it of items) {
+    const tagList = Array.isArray(it.tags) ? it.tags : [];
+    for (const t of tagList) {
+      tagToCount.set(t, (tagToCount.get(t) || 0) + 1);
     }
-    
-    const subdirs = fs.readdirSync(NEWSLOG_DIR).filter(item => {
-      const itemPath = path.join(NEWSLOG_DIR, item);
-      return fs.statSync(itemPath).isDirectory();
-    });
-    
-    tags.push(...subdirs);
-    
-    // 添加一些默认分类，即使没有对应的文件夹
-    const defaultTags = ['科技', '娱乐', '生活', '体育', '财经', '教育', '健康', '旅游'];
-    defaultTags.forEach(tag => {
-      if (!tags.includes(tag)) {
-        tags.push(tag);
-      }
-    });
-  } catch (e) {
-    console.error('获取tag列表失败:', e);
   }
-  
-  return tags;
+  const arr = Array.from(tagToCount.entries()).map(([tag, count]) => ({ tag, count }));
+  // 按数量降序，数量相同按字母/拼音升序
+  arr.sort((a,b)=> b.count - a.count || String(a.tag).localeCompare(String(b.tag)));
+  return arr;
 }
 
 // News list with optional filters
 app.get('/api/news', (req, res) => {
-  const { category, sort = 'composite' } = req.query;
-  
-  // 优先从JSON文件读取，然后合并数据库中的新闻
+  const { category, tag, sort = 'composite', page = '1', pageSize = '10' } = req.query;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const sizeNum = Math.min(50, Math.max(1, parseInt(pageSize, 10) || 10));
+
+  // 从JSON与DB合并
   const jsonItems = readNewsFromJson();
   const db = readJson(NEWS_FILE) || { items: [] };
   const dbItems = db.items || [];
-  
-  console.log(`API请求: category=${category}, sort=${sort}`);
-  console.log(`JSON新闻数量: ${jsonItems.length}`);
-  console.log(`数据库新闻数量: ${dbItems.length}`);
-  
-  // 合并所有新闻，去重（基于标题）
-  const allItems = [...jsonItems];
-  dbItems.forEach(dbItem => {
-    if (!allItems.find(item => item.title === dbItem.title)) {
-      allItems.push(dbItem);
-    }
-  });
-  
-  console.log(`合并后新闻数量: ${allItems.length}`);
-  
-  let items = allItems;
-  
-  // 按分类筛选
-  if (category && category !== 'all') {
-    items = items.filter(n => n.category === category);
-    console.log(`分类筛选后数量: ${items.length}`);
+
+  const merged = [...jsonItems];
+  for (const it of dbItems) {
+    if (!merged.find(x => x.id === it.id)) merged.push(it);
   }
-  
-  // 排序
+
+  // 计算热度：views + likes*3 + comments*4
+  for (const it of merged) {
+    const views = Number(it.views || 0);
+    const likes = Number(it.likes || 0);
+    const commentsCount = Number(it.commentsCount || 0);
+    it.hot = views + likes * 3 + commentsCount * 4;
+  }
+
+  let items = merged;
+  const tagFilter = tag || (category && category !== 'all' ? category : '');
+  if (tagFilter) {
+    items = items.filter(n => Array.isArray(n.tags) && n.tags.includes(tagFilter));
+  }
+
   if (sort === 'latest') {
-    items = items.slice().sort((a,b) => (b.time || 0) - (a.time || 0));
-    console.log('按最新排序');
+    items = items.slice().sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
   } else if (sort === 'hot') {
     items = items.slice().sort((a,b) => (b.hot || 0) - (a.hot || 0));
-    console.log('按热度排序');
+  } else {
+    // 默认综合：按 hot 与 createdAt 组合
+    items = items.slice().sort((a,b) => (b.hot || 0) - (a.hot || 0) || (b.createdAt || 0) - (a.createdAt || 0));
   }
-  
-  console.log(`最终返回新闻数量: ${items.length}`);
-  res.json({ ok: true, items });
+
+  const total = items.length;
+  const start = (pageNum - 1) * sizeNum;
+  const end = start + sizeNum;
+  const pageItems = items.slice(start, end);
+
+  // 调试信息
+  //console.log('/api/news', items, merged, dbItems, jsonItems);
+  res.json({ ok: true, items: pageItems, total, page: pageNum, pageSize: sizeNum });
 });
 
 // 获取可用的tag列表
 app.get('/api/tags', (req, res) => {
-  const tags = getAvailableTags();
-  console.log('返回的标签列表:', tags);
-  res.json({ ok: true, tags });
+  const jsonItems = readNewsFromJson();
+  const db = readJson(NEWS_FILE) || { items: [] };
+  const all = [...jsonItems, ...((db.items)||[])];
+  const agg = aggregateTags(all);
+  //console.log('/api/tags', agg , all , db , jsonItems);
+  
+  res.json({ ok: true, tags: agg });
+
 });
 
 // Create/Publish news
 app.post('/api/news', (req, res) => {
-  const { title, content, category = 'general', hot = 0 } = req.body || {};
+  const { title, content, tags = [], summary = '', image = '', imageAlt = '', author = 'VF News' } = req.body || {};
   if (!title || !content) {
     return res.status(400).json({ ok: false, message: 'title 与 content 必填' });
-  }
-  const bodyToCheck = `${title}\n${content}`;
-  if (violatesPolicy(bodyToCheck)) {
-    return res.status(400).json({ ok: false, message: '内容不合规：包含现实要素或不允许的主题' });
   }
   const db = readJson(NEWS_FILE) || { items: [] };
   const item = {
     id: `n_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
     title,
-    content: attachDisclaimer(content),
-    category,
-    time: Math.floor(Date.now()/60000) % (24*60), // 简化：分钟数做“新近度”
-    hot: Number(hot) || 0
+    content,
+    tags: Array.isArray(tags) ? tags : [],
+    summary,
+    image,
+    imageAlt,
+    author,
+    createdAt: Date.now(),
+    views: 0,
+    likes: 0,
+    commentsCount: 0
   };
   db.items.unshift(item);
   writeJson(NEWS_FILE, db);
@@ -436,20 +303,18 @@ app.get('/api/news/:id', (req, res) => {
 
 // Update news (e.g., content or hot)
 app.put('/api/news/:id', (req, res) => {
-  const { content, hot, title, category } = req.body || {};
+  const { content, title, tags, summary, image, imageAlt, author } = req.body || {};
   const db = readJson(NEWS_FILE) || { items: [] };
   const idx = (db.items || []).findIndex(n => n.id === req.params.id);
   if (idx === -1) return res.status(404).json({ ok: false, message: 'not found' });
   const next = { ...db.items[idx] };
   if (typeof title === 'string') next.title = title;
-  if (typeof category === 'string') next.category = category;
-  if (typeof content === 'string') {
-    if (violatesPolicy(`${next.title}\n${content}`)) {
-      return res.status(400).json({ ok: false, message: '内容不合规：包含现实要素或不允许的主题' });
-    }
-    next.content = attachDisclaimer(content);
-  }
-  if (hot != null) next.hot = Number(hot) || 0;
+  if (Array.isArray(tags)) next.tags = tags;
+  if (typeof summary === 'string') next.summary = summary;
+  if (typeof image === 'string') next.image = image;
+  if (typeof imageAlt === 'string') next.imageAlt = imageAlt;
+  if (typeof author === 'string') next.author = author;
+  if (typeof content === 'string') next.content = content;
   db.items[idx] = next;
   writeJson(NEWS_FILE, db);
   res.json({ ok: true, item: next });
@@ -464,32 +329,52 @@ app.delete('/api/news/:id', (req, res) => {
   res.json({ ok: true, removed: before - db.items.length });
 });
 
+// 互动统计：浏览 +1
+app.post('/api/news/:id/view', (req, res) => {
+  const db = readJson(NEWS_FILE) || { items: [] };
+  const idx = (db.items || []).findIndex(n => n.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ ok: false, message: 'not found' });
+  db.items[idx].views = Number(db.items[idx].views || 0) + 1;
+  writeJson(NEWS_FILE, db);
+  res.json({ ok: true, views: db.items[idx].views });
+});
+
+// 点赞 +1 / -1（可选）
+app.post('/api/news/:id/like', (req, res) => {
+  const { op = 'inc' } = req.body || {};
+  const db = readJson(NEWS_FILE) || { items: [] };
+  const idx = (db.items || []).findIndex(n => n.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ ok: false, message: 'not found' });
+  const cur = Number(db.items[idx].likes || 0);
+  db.items[idx].likes = op === 'dec' ? Math.max(0, cur - 1) : cur + 1;
+  writeJson(NEWS_FILE, db);
+  res.json({ ok: true, likes: db.items[idx].likes });
+});
+
+// 评论计数 +1（可扩展为存储评论内容）
+app.post('/api/news/:id/comment', (req, res) => {
+  const db = readJson(NEWS_FILE) || { items: [] };
+  const idx = (db.items || []).findIndex(n => n.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ ok: false, message: 'not found' });
+  db.items[idx].commentsCount = Number(db.items[idx].commentsCount || 0) + 1;
+  writeJson(NEWS_FILE, db);
+  res.json({ ok: true, commentsCount: db.items[idx].commentsCount });
+});
+
 // Import markdown files from /server/newslog into news
 app.post('/api/import-news', (req, res) => {
   try {
     if (!fs.existsSync(NEWSLOG_DIR)) return res.json({ ok: true, imported: 0, items: [] });
-    const files = fs.readdirSync(NEWSLOG_DIR).filter(f => /\.md$/i.test(f));
+    const files = fs.readdirSync(NEWSLOG_DIR).filter(f => /\.json$/i.test(f));
     const newsDb = readJson(NEWS_FILE) || { items: [] };
     let imported = 0; const added = [];
     files.forEach(fn => {
       const full = path.join(NEWSLOG_DIR, fn);
       const text = fs.readFileSync(full, 'utf-8');
-      const lines = text.split(/\r?\n/);
-      let title = lines.find(l => /^#\s+/.test(l)) || lines[0] || '未命名';
-      title = title.replace(/^#\s+/, '').trim();
-      const content = lines.slice(lines.findIndex(l => /^#\s+/.test(l)) + 1).join('\n').trim();
-      if (!title || !content) return;
-      if (violatesPolicy(`${title}\n${content}`)) return; // 跳过不合规
-      const item = {
-        id: `n_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
-        title,
-        content: attachDisclaimer(content),
-        category: 'novel',
-        time: Math.floor(Date.now()/60000) % (24*60),
-        hot: Math.floor(Math.random()*150 + 10)
-      };
-      newsDb.items.unshift(item);
-      imported++; added.push(item);
+      const parsed = parseJsonToNews(text, fn, fs.statSync(full).mtime, 'general');
+      if (!parsed) return;
+      newsDb.items.unshift(parsed);
+      imported++; added.push(parsed);
     });
     writeJson(NEWS_FILE, newsDb);
     res.json({ ok: true, imported, items: added });
