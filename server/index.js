@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const bodyParser = require('body-parser');
+const statsService = require('./services/stats');
 
 const app = express();
 const PORT = process.env.PORT || 5175;
@@ -264,7 +265,40 @@ app.get('/api/tags', (req, res) => {
   //console.log('/api/tags', agg , all , db , jsonItems);
   
   res.json({ ok: true, tags: agg });
+});
 
+// 获取统计信息
+app.get('/api/stats', (req, res) => {
+  try {
+    const stats = statsService.getOverallStats();
+    res.json({ ok: true, stats });
+  } catch (error) {
+    console.error('获取统计信息失败:', error);
+    res.status(500).json({ ok: false, message: '获取统计信息失败' });
+  }
+});
+
+// 获取分类统计信息
+app.get('/api/stats/categories', (req, res) => {
+  try {
+    const categoryStats = statsService.getCategoryStats();
+    res.json({ ok: true, categories: categoryStats });
+  } catch (error) {
+    console.error('获取分类统计失败:', error);
+    res.status(500).json({ ok: false, message: '获取分类统计失败' });
+  }
+});
+
+// 获取特定分类详情
+app.get('/api/stats/categories/:tag', (req, res) => {
+  try {
+    const { tag } = req.params;
+    const categoryDetail = statsService.getCategoryDetail(tag);
+    res.json({ ok: true, category: categoryDetail });
+  } catch (error) {
+    console.error('获取分类详情失败:', error);
+    res.status(500).json({ ok: false, message: '获取分类详情失败' });
+  }
 });
 
 // Create/Publish news

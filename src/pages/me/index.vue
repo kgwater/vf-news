@@ -59,7 +59,7 @@
     <view class="section">
       <text class="title">ℹ️ 版本信息</text>
       <view class="version-info">
-        <text class="version-item">版本号：2.7.1</text>
+        <text class="version-item">版本号：2.9.20</text>
         <text class="version-item">更新时间：2025年9月</text>
         <text class="version-item">开发者：Water</text>
       </view>
