@@ -1,0 +1,14 @@
+{
+  "id": "nov_test_001",
+  "title": "小说测试1",
+  "summary": "小说测试1",
+  "content": "小说测试1",
+  "category": "小说111",
+  "image": "https://picsum.photos/800/400",
+  "imageAlt": "小说测试111",
+  "author": "VF News",
+  "publishTime": "2024-09-204T21:40:00Z",
+  "hot": 98,
+  "tags": ["小说测试111"],
+  "disclaimer": "内容为AI生成的虚拟新闻，不涉及现实中的一切内容，无任何映射"
+}
