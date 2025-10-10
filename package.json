@@ -55,6 +55,7 @@
     "@dcloudio/uni-mp-xhs": "3.0.0-4070620250821001",
     "@dcloudio/uni-quickapp-webview": "3.0.0-4070620250821001",
     "body-parser": "^1.20.2",
+    "cnpm": "^9.4.0",
     "express": "^4.19.2",
     "marked": "^11.2.0",
     "node-fetch": "^2.7.0",
