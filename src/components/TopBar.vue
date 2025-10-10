@@ -1,6 +1,8 @@
 <template>
+  <text class="brand">VF News（Demo）-{{ currentSort }}</text>
   <view class="topbar">
-    <text class="brand">VF News（Demo）-{{ currentSort }}</text>
+<!--    <text class="brand">VF News（Demo）-{{ currentSort }}</text>-->
+    <view class="action" title="统计" @tap="openStats">📊</view>
     <view class="search">
       <text class="search-icon">🔍</text> 
       <input 
@@ -12,7 +14,8 @@
         @confirm="onSearch" 
       />
     </view>
-    <view class="action" title="统计" @tap="openStats">📊</view>
+
+
     <view class="action" title="通知">🔔</view>
   </view>
 </template>
@@ -61,10 +64,14 @@ export default {
   background: linear-gradient(90deg,#60a5fa,#a78bfa,#f472b6); 
   background-clip: text; 
   -webkit-background-clip: text; 
-  color: transparent; 
+  color: transparent;
+  display:flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
 }
 .search { 
-  flex: 1; 
+  flex: 0.5;
   margin: 0 20rpx 0 28rpx; 
   position: relative;
 }
